@@ -6,8 +6,44 @@ the clips into a single highlight reel, with optional crossfade transitions.
 """
 
 import os
+import re
+import sys
+
+from typing import Callable
 from moviepy import VideoFileClip, concatenate_videoclips
 from moviepy import vfx
+
+
+class _StderrCapture:
+    """
+    Drop-in replacement for sys.stderr that intercepts tqdm lines,
+    parses the percentage, and forwards it to an optional callback.
+    Everything is also forwarded to the real stderr so the terminal
+    still shows the bar.
+    """
+    _PCT_RE = re.compile(r"(\d+)%\|")
+
+    def __init__(self, callback: Callable[[int, str], None] | None):
+        self._cb      = callback
+        self._real    = sys.__stderr__
+        self._last    = -1
+
+    def write(self, text: str):
+        self._real.write(text)
+        if self._cb and "%|" in text:
+            m = self._PCT_RE.search(text)
+            if m:
+                pct = int(m.group(1))
+                if pct != self._last:
+                    self._last = pct
+                    self._cb(pct, f"frame {pct}%")
+
+    def flush(self):
+        self._real.flush()
+
+    # make it a proper file-like
+    def fileno(self):  return self._real.fileno()
+    def isatty(self):  return False
 
 
 def build_highlight(
@@ -16,6 +52,7 @@ def build_highlight(
     output_path: str,
     crossfade: float = 0.5,
     target_resolution: tuple[int, int] | None = None,
+    progress_callback: Callable[[int, str], None] | None = None,
 ) -> str:
     """
     Cut `video_path` at the given time ranges and write the result to
@@ -68,12 +105,18 @@ def build_highlight(
     final = concatenate_videoclips(clips, method=method)
 
     print(f"[builder] Writing → {output_path}")
-    final.write_videofile(
-        output_path,
-        codec="libx264",
-        audio_codec="aac",
-        logger="bar",
-    )
+    _prev_stderr = sys.stderr
+    if progress_callback:
+        sys.stderr = _StderrCapture(progress_callback)
+    try:
+        final.write_videofile(
+            output_path,
+            codec="libx264",
+            audio_codec="aac",
+            logger="bar",
+        )
+    finally:
+        sys.stderr = _prev_stderr
 
     source.close()
     final.close()
