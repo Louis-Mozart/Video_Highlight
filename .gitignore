@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Video files (don't commit test videos)
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+
+# Temp files
+temp_audio*
+*_highlight.mp4
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
