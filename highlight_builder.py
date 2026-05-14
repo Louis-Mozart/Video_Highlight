@@ -41,17 +41,31 @@ def _duration_of(path: str) -> float:
     return float(out.strip())
 
 
-def _cut_segment(ffmpeg: str, src: str, start: float, end: float, out: str) -> None:
-    """Cut a single segment using stream copy — no re-encode, no RAM usage."""
-    cmd = [
-        ffmpeg, "-y",
-        "-ss", f"{start:.3f}",
-        "-to", f"{end:.3f}",
-        "-i", src,
-        "-c", "copy",
-        "-avoid_negative_ts", "make_zero",
-        out,
-    ]
+def _cut_segment(
+    ffmpeg: str,
+    src: str,
+    start: float,
+    end: float,
+    out: str,
+    reencode: bool = False,
+    fps: int = 30,
+) -> None:
+    """
+    Cut a single segment.
+    reencode=False → stream copy (fast, zero RAM, hard cuts only).
+    reencode=True  → re-encode to CFR (required for xfade dissolve).
+    """
+    cmd = [ffmpeg, "-y", "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", src]
+    if reencode:
+        cmd += [
+            "-vf", f"fps={fps}",          # force constant frame rate
+            "-c:v", "libx264", "-crf", "18", "-preset", "fast",
+            "-c:a", "aac", "-b:a", "192k",
+            "-avoid_negative_ts", "make_zero",
+        ]
+    else:
+        cmd += ["-c", "copy", "-avoid_negative_ts", "make_zero"]
+    cmd.append(out)
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"ffmpeg cut failed:\n{result.stderr}")
@@ -100,10 +114,11 @@ def build_highlight(
     try:
         # ── step 1: cut each segment ──────────────────────────────────────────
         seg_files: list[str] = []
+        need_reencode = crossfade > 0 and len(clean) > 1
         for i, (start, end) in enumerate(clean):
             seg_path = os.path.join(tmp_dir, f"seg_{i:04d}.mp4")
             print(f"  [builder] Cutting clip {i+1}/{len(clean)}: {start:.1f}s → {end:.1f}s")
-            _cut_segment(ffmpeg, video_path, start, end, seg_path)
+            _cut_segment(ffmpeg, video_path, start, end, seg_path, reencode=need_reencode)
             seg_files.append(seg_path)
             if progress_callback:
                 pct = int((i + 1) / len(clean) * 20)   # 0–20 % for cutting
@@ -182,7 +197,7 @@ def _build_xfade_cmd(
 
     filter_parts: list[str] = []
     for i in range(n):
-        filter_parts.append(f"[{i}:v]setpts=PTS-STARTPTS[v{i}]")
+        filter_parts.append(f"[{i}:v]setpts=PTS-STARTPTS,fps=30[v{i}]")
 
     offset = durations[0] - crossfade
     filter_parts.append(
