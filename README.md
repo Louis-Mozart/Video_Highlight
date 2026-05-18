@@ -11,7 +11,7 @@ pinned: false
 
 # Video Highlight Generator 🎸
 
-Automatically summarises a band/concert video into a **≤ 90-second highlight reel** by detecting the most energetic, onset-rich, and spectrally bright moments (solos, big choruses, drum fills, etc.).
+Automatically summarises a band/concert video into a **≤ 90-second highlight reel** by detecting the most energetic, onset-rich, and spectrally bright moments (solos, big choruses, drum fills, etc.)
 
 ---
 
